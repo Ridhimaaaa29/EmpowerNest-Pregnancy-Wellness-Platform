@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { format } from "date-fns"
-import { CalendarIcon, Loader2 } from "lucide-react"
+import { CalendarIcon, Loader2, AlertCircle, CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +13,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { CycleTracker } from "@/components/cycle-tracker"
+import { cycleService } from "@/services/api"
 
 export type CycleData = {
   lastPeriodDate: Date | undefined
@@ -26,6 +27,8 @@ export type CycleData = {
 export function CycleInputForm() {
   const [formStep, setFormStep] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
   const [cycleData, setCycleData] = useState<CycleData>({
     lastPeriodDate: undefined,
     cycleLength: 28,
@@ -48,16 +51,38 @@ export function CycleInputForm() {
     })
   }
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (formStep < 2) {
       setFormStep(formStep + 1)
     } else {
       setIsLoading(true)
-      // Simulate loading
-      setTimeout(() => {
+      setError(null)
+      
+      try {
+        // Format the date to ISO string for the API
+        const dataToSend = {
+          lastPeriodDate: cycleData.lastPeriodDate?.toISOString().split('T')[0],
+          cycleLength: cycleData.cycleLength,
+          periodLength: cycleData.periodLength,
+          regularCycle: cycleData.regularCycle,
+          symptoms: cycleData.symptoms,
+          flow: cycleData.flow,
+        }
+
+        // Call the backend API to save cycle data
+        const response = await cycleService.createCycle(dataToSend)
+        
+        if (response) {
+          setSuccess(true)
+          setTimeout(() => {
+            setFormStep(3)
+            setIsLoading(false)
+          }, 1000)
+        }
+      } catch (err: any) {
+        setError(err?.message || "Failed to save cycle data. Please try again.")
         setIsLoading(false)
-        setFormStep(3)
-      }, 1500)
+      }
     }
   }
 
@@ -86,6 +111,19 @@ export function CycleInputForm() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {error && (
+              <div className="mb-4 flex items-center gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-red-700">
+                <AlertCircle className="h-4 w-4" />
+                <span className="text-sm">{error}</span>
+              </div>
+            )}
+            
+            {success && (
+              <div className="mb-4 flex items-center gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-green-700">
+                <CheckCircle className="h-4 w-4" />
+                <span className="text-sm">Cycle data saved successfully!</span>
+              </div>
+            )}
             {formStep === 0 && (
               <div className="space-y-6">
                 <div className="space-y-2">

@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { pregnancyService } from "@/services/api";
 
 // Risk assessment logic
 const predictHealthRisk = (userData: any) => {
@@ -131,19 +132,28 @@ export default function PregnancyTracker() {
 
   const [result, setResult] = useState<string | null>(null);
   const [riskHistory, setRiskHistory] = useState<{ date: string; risk: string }[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dueDate, setDueDate] = useState("");
 
-  // Load risk history from local storage on component mount
+  // Load risk history from backend on component mount
   useEffect(() => {
-    const savedHistory = localStorage.getItem("riskHistory");
-    if (savedHistory) {
-      setRiskHistory(JSON.parse(savedHistory));
-    }
+    const fetchHistory = async () => {
+      try {
+        const entries = await pregnancyService.getAllEntries();
+        if (entries && Array.isArray(entries)) {
+          setRiskHistory(entries.map((entry: any) => ({
+            date: entry.dueDate?.split('T')[0] || new Date().toLocaleDateString(),
+            risk: entry.riskAssessment || "Low Risk",
+          })));
+        }
+      } catch (err) {
+        console.error("Failed to load pregnancy history:", err);
+        // Fall back to empty history if API fails
+      }
+    };
+    fetchHistory();
   }, []);
-
-  // Save risk history to local storage whenever it changes
-  useEffect(() => {
-    localStorage.setItem("riskHistory", JSON.stringify(riskHistory));
-  }, [riskHistory]);
 
   const handleSymptomChange = (symptom: string, checked: boolean) => {
     setFormData((prev) => ({
@@ -152,24 +162,46 @@ export default function PregnancyTracker() {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
+    setError(null);
 
-    const risk = predictHealthRisk({
-      ...formData,
-      age: Number.parseInt(formData.age),
-    });
+    try {
+      const risk = predictHealthRisk({
+        ...formData,
+        age: Number.parseInt(formData.age),
+      });
 
-    setResult(risk);
+      setResult(risk);
 
-    // Add the new risk assessment to the history
-    setRiskHistory((prev) => [
-      ...prev,
-      {
-        date: new Date().toLocaleDateString(), // Store only the date
-        risk,
-      },
-    ]);
+      // Prepare data for backend
+      const pregnancyData = {
+        dueDate: dueDate || new Date().toISOString().split('T')[0],
+        weight: formData.bloodPressure ? parseInt(formData.bloodPressure) : undefined,
+        bloodPressure: formData.bloodPressure,
+        notes: `Risk Assessment: ${risk}. Age: ${formData.age}, Stage: ${formData.pregnancyStage}`,
+      };
+
+      // Save to backend
+      const response = await pregnancyService.createEntry(pregnancyData);
+      
+      if (response) {
+        // Add the new risk assessment to the history
+        setRiskHistory((prev) => [
+          ...prev,
+          {
+            date: new Date().toLocaleDateString(),
+            risk,
+          },
+        ]);
+      }
+    } catch (err: any) {
+      setError(err?.message || "Failed to save pregnancy assessment");
+      console.error("Error saving pregnancy assessment:", err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Prepare data for the bar chart
@@ -188,6 +220,24 @@ export default function PregnancyTracker() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
+          {error && (
+            <div className="rounded-md bg-red-50 p-4 border border-red-200 flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <span className="text-sm text-red-800">{error}</span>
+            </div>
+          )}
+
+          {/* Due Date for Backend */}
+          <div className="space-y-2">
+            <Label htmlFor="due-date">Expected Due Date (for backend tracking)</Label>
+            <Input
+              id="due-date"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+          </div>
+
           {/* Age */}
           <div className="space-y-2">
             <Label htmlFor="age">Your Age</Label>
@@ -298,8 +348,9 @@ export default function PregnancyTracker() {
           </div>
 
           {/* Submit Button */}
-          <Button type="submit" className="w-full">
-            Assess Health Risk
+          <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isLoading ? "Assessing..." : "Assess Health Risk"}
           </Button>
         </form>
 

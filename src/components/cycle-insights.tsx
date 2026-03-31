@@ -1,14 +1,15 @@
 "use client"
 
-import { useState } from "react"
-import { Calendar, LineChart, Ruler, Thermometer } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Calendar, LineChart, Ruler, Thermometer, Loader2, AlertCircle } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { cycleService } from "@/services/api"
 
 export function CycleInsights() {
-  // In a real app, this would come from your backend or state management
-  const [cycleStats] = useState({
+  const [cycleStats, setCycleStats] = useState({
     averageCycleLength: 28,
     averagePeriodLength: 5,
     shortestCycle: 26,
@@ -16,9 +17,53 @@ export function CycleInsights() {
     averageTemperature: 97.8,
     commonSymptoms: ["Cramps", "Headache", "Bloating"],
   })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchStatistics = async () => {
+      try {
+        const response = await cycleService.getStatistics()
+        if (response) {
+          // Map backend response to our state structure
+          setCycleStats({
+            averageCycleLength: response.averageCycleLength || 28,
+            averagePeriodLength: response.averagePeriodLength || 5,
+            shortestCycle: response.shortestCycle || 26,
+            longestCycle: response.longestCycle || 30,
+            averageTemperature: response.averageTemperature || 97.8,
+            commonSymptoms: response.commonSymptoms || ["Cramps", "Headache", "Bloating"],
+          })
+        }
+      } catch (err: any) {
+        setError(err?.message || "Failed to load cycle statistics")
+        console.error("Error fetching cycle statistics:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchStatistics()
+  }, [])
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {loading && (
+        <div className="flex items-center justify-center p-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <span className="ml-2 text-muted-foreground">Loading cycle statistics...</span>
+        </div>
+      )}
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {!loading && !error && (
+        <>
       <Card>
         <CardHeader>
           <CardTitle>Cycle Insights</CardTitle>
@@ -171,6 +216,8 @@ export function CycleInsights() {
           </Tabs>
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   )
 }

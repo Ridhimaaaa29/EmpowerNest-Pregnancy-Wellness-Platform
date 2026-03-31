@@ -53,9 +53,16 @@ const signup = async (req, res) => {
     // Generate JWT token
     const token = generateToken(newUser.id, newUser.email);
 
+    // Set JWT as httpOnly cookie (secure, not accessible by JavaScript)
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
     res.status(201).json({
       message: 'User registered successfully',
-      token,
       user: {
         id: newUser.id,
         email: newUser.email,
@@ -103,9 +110,16 @@ const login = async (req, res) => {
     // Generate JWT token
     const token = generateToken(user.id, user.email);
 
+    // Set JWT as httpOnly cookie (secure, not accessible by JavaScript)
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
     res.status(200).json({
       message: 'Login successful',
-      token,
       user: {
         id: user.id,
         email: user.email,
@@ -228,9 +242,31 @@ const changePassword = async (req, res) => {
   }
 };
 
+// Logout - Clear authentication cookie
+const logout = async (req, res) => {
+  try {
+    // Clear the authentication cookie
+    res.clearCookie('authToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+
+    res.status(200).json({
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ 
+      error: error.message || 'Logout failed' 
+    });
+  }
+};
+
 module.exports = {
   signup,
   login,
+  logout,
   getProfile,
   updateProfile,
   changePassword

@@ -1,46 +1,46 @@
 /**
  * API Service Layer
  * Centralized location for all API calls
- * Handles JWT token management and authorization
+ * Uses httpOnly cookies for authentication (automatic on each request)
  * Backend: http://localhost:5001 (Aditya's Express server)
  */
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
-// ============= TOKEN MANAGEMENT =============
-const TOKEN_KEY = 'empowerNest_token';
-
+// ============= AUTHENTICATION SERVICE =============
 export const tokenService = {
-  getToken: (): string | null => {
-    return localStorage.getItem(TOKEN_KEY);
-  },
-
-  setToken: (token: string): void => {
-    localStorage.setItem(TOKEN_KEY, token);
-  },
-
-  removeToken: (): void => {
-    localStorage.removeItem(TOKEN_KEY);
-  },
-
-  isAuthenticated: (): boolean => {
-    return !!localStorage.getItem(TOKEN_KEY);
+  // Cookies are handled automatically by the browser
+  // No need to manually manage tokens
+  
+  isAuthenticated: async (): Promise<boolean> => {
+    try {
+      // Try to fetch profile - if it succeeds, user is authenticated
+      const response = await fetch(`${API_URL}/api/users/profile`, {
+        method: 'GET',
+        credentials: 'include', // Include cookies
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
   },
 };
 
-// Generic API request handler with token support
+// Generic API request handler with automatic cookie support
 async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_URL}${endpoint}`;
-  const token = tokenService.getToken();
 
   try {
     const response = await fetch(url, {
+      credentials: 'include', // Include httpOnly cookies automatically
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
         ...options.headers,
       },
       ...options,
@@ -49,9 +49,10 @@ async function apiRequest<T>(
     if (!response.ok) {
       const error = await response.json();
       
-      // Handle 401 - token expired or invalid
+      // Handle 401 - session expired
       if (response.status === 401) {
-        tokenService.removeToken();
+        // Clear any local state if needed
+        // Redirect to login will be handled by ProtectedRoute
       }
       
       throw new Error(error.message || error.error || `API error: ${response.statusText}`);
@@ -70,23 +71,16 @@ export const authService = {
     apiRequest<any>('/api/users/signup', {
       method: 'POST',
       body: JSON.stringify({ email, password, confirmPassword, name, phoneNumber, dateOfBirth }),
-    }).then(res => {
-      if (res.token) tokenService.setToken(res.token);
-      return res;
     }),
 
   login: (email: string, password: string) =>
     apiRequest<any>('/api/users/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
-    }).then(res => {
-      if (res.token) tokenService.setToken(res.token);
-      return res;
     }),
 
-  logout: (): void => {
-    tokenService.removeToken();
-  },
+  logout: () =>
+    apiRequest<any>('/api/users/logout', { method: 'POST' }),
 
   getProfile: () =>
     apiRequest('/api/users/profile', { method: 'GET' }),

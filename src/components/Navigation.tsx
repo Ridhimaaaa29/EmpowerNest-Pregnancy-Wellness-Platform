@@ -65,12 +65,25 @@ const navigation: NavItem[] = [
 export function Navigation() {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const isAuthenticated = tokenService.isAuthenticated();
   
-  const handleLogout = () => {
-    authService.logout();
+  useEffect(() => {
+    const checkAuth = async () => {
+      const authStatus = await tokenService.isAuthenticated();
+      setIsAuthenticated(authStatus);
+    };
+    checkAuth();
+  }, []);
+  
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+    setIsAuthenticated(false);
     navigate('/login');
     setIsOpen(false);
   };

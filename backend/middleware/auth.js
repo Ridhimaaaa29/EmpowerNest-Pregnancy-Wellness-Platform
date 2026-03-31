@@ -1,13 +1,19 @@
 const jwt = require('jsonwebtoken');
 
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  // Try to get token from cookies first (httpOnly cookie)
+  let token = req.cookies?.authToken;
+  
+  // Fall back to Authorization header for backward compatibility
+  if (!token) {
+    const authHeader = req.headers['authorization'];
+    token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  }
 
   if (!token) {
     return res.status(401).json({ 
       error: 'Access token required',
-      message: 'No token provided in Authorization header'
+      message: 'No token provided'
     });
   }
 

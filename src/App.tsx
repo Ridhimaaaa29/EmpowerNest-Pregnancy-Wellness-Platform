@@ -3,8 +3,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@/hooks/useTheme";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import { tokenService } from "@/services/api";
 import Index from "./pages/Index";
 import BabyCare from "./pages/BabyCare";
 import TrackerPage from "./pages/TrackerPage"
@@ -17,6 +19,19 @@ import Resources from "./pages/Resources";
 
 const queryClient = new QueryClient();
 
+/**
+ * RootRedirect Component
+ * Redirects "/" to login if not authenticated, 
+ * otherwise shows the home page
+ */
+function RootRedirect() {
+  const isAuthenticated = tokenService.isAuthenticated();
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  return <Index />;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider defaultTheme="light">
@@ -25,14 +40,19 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/baby-care" element={<BabyCare />} />
-            <Route path="/tracker" element={<TrackerPage />} />
-            <Route path="/pregnancy" element={<PregnancyPage/>}/>
-            <Route path="/signup" element={<SignupPage />} />
+            {/* Root route - redirects to login if not authenticated */}
+            <Route path="/" element={<RootRedirect />} />
+            
+            {/* Public routes - accessible without authentication */}
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/postpartum" element={<Postpartum />} />
-            <Route path="/resources" element={<Resources />}/>
+            <Route path="/signup" element={<SignupPage />} />
+            
+            {/* Protected routes - require authentication */}
+            <Route path="/baby-care" element={<ProtectedRoute><BabyCare /></ProtectedRoute>} />
+            <Route path="/tracker" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
+            <Route path="/pregnancy" element={<ProtectedRoute><PregnancyPage /></ProtectedRoute>} />
+            <Route path="/postpartum" element={<ProtectedRoute><Postpartum /></ProtectedRoute>} />
+            <Route path="/resources" element={<ProtectedRoute><Resources /></ProtectedRoute>} />
           </Routes>
         </BrowserRouter>
       </TooltipProvider>

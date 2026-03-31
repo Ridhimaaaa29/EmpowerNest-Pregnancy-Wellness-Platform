@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { 
@@ -15,10 +15,12 @@ import {
   HeadphonesIcon,
   UserCircle,
   HeartPulse,
-  Stethoscope
+  Stethoscope,
+  LogOut
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { ThemeToggle } from './ThemeToggle';
+import { tokenService, authService } from '@/services/api';
 
 type NavItem = {
   name: string;
@@ -64,6 +66,14 @@ export function Navigation() {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const isAuthenticated = tokenService.isAuthenticated();
+  
+  const handleLogout = () => {
+    authService.logout();
+    navigate('/login');
+    setIsOpen(false);
+  };
   
   useEffect(() => {
     const handleScroll = () => {
@@ -131,13 +141,21 @@ export function Navigation() {
           
           {/* Theme Toggle */}
           <ThemeToggle />
-          <Link to="/signup">
-            <Button variant="outline" size="sm" className="rounded-full">
-              <UserCircle className="h-4 w-4 mr-2" />
-              Login / Sign Up
+          
+          {/* Authentication Button */}
+          {isAuthenticated ? (
+            <Button variant="outline" size="sm" className="rounded-full" onClick={handleLogout}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
             </Button>
-          </Link>
-          {/* Login/Signup Button */}
+          ) : (
+            <Link to="/login">
+              <Button variant="outline" size="sm" className="rounded-full">
+                <UserCircle className="h-4 w-4 mr-2" />
+                Login
+              </Button>
+            </Link>
+          )}
           
         </div>
         
@@ -146,11 +164,20 @@ export function Navigation() {
           {/* Theme Toggle (Mobile) */}
           <ThemeToggle />
           
-          {/* Login/Signup Button (Mobile) */}
-          <Button variant="outline" size="sm" className="rounded-full">
-            <UserCircle className="h-4 w-4" />
-            <span className="sr-only">Login</span>
-          </Button>
+          {/* Authentication Button (Mobile) */}
+          {isAuthenticated ? (
+            <Button variant="outline" size="sm" className="rounded-full" onClick={handleLogout}>
+              <LogOut className="h-4 w-4" />
+              <span className="sr-only">Logout</span>
+            </Button>
+          ) : (
+            <Link to="/login">
+              <Button variant="outline" size="sm" className="rounded-full">
+                <UserCircle className="h-4 w-4" />
+                <span className="sr-only">Login</span>
+              </Button>
+            </Link>
+          )}
           
           <button
             onClick={() => setIsOpen(!isOpen)}
@@ -191,13 +218,15 @@ export function Navigation() {
             </Link>
           ))}
           
-          {/* Mobile Login/Signup Button (in menu) */}
-          <div className="p-3 mt-2 border-t border-muted">
-            <Button variant="default" className="w-full rounded-full">
-              <UserCircle className="h-4 w-4 mr-2" />
-              Login / Sign Up
-            </Button>
-          </div>
+          {/* Mobile Logout Button (in menu) */}
+          {isAuthenticated && (
+            <div className="p-3 mt-2 border-t border-muted">
+              <Button variant="destructive" className="w-full rounded-full" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
+            </div>
+          )}
         </div>
       </motion.div>
     </header>

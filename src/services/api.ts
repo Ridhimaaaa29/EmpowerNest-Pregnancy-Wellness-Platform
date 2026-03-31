@@ -1,25 +1,41 @@
 /**
  * API Service Layer
- * Frontend-only for now - uses localStorage for authentication
- * Can be extended later to use backend APIs
+ * Now integrates with Express backend
+ * Falls back to localStorage for offline support
  */
 
 import { localAuthService } from './authLocal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
-// ============= AUTHENTICATION SERVICE =============
+// ============= TOKEN SERVICE =============
 export const tokenService = {
   getToken: (): string | null => {
-    return localAuthService.getToken();
+    // Try to get from localStorage first
+    try {
+      const auth = localStorage.getItem('empowernest_auth');
+      if (auth) {
+        const parsed = JSON.parse(auth);
+        return parsed.token || null;
+      }
+    } catch (e) {
+      console.error('Error parsing auth token:', e);
+    }
+    return null;
+  },
+
+  setToken: (token: string): void => {
+    const auth = JSON.parse(localStorage.getItem('empowernest_auth') || '{}');
+    auth.token = token;
+    localStorage.setItem('empowernest_auth', JSON.stringify(auth));
   },
 
   clearToken: (): void => {
     localAuthService.logout();
   },
   
-  isAuthenticated: (): Promise<boolean> => {
-    return Promise.resolve(localAuthService.isAuthenticated());
+  isAuthenticated: (): boolean => {
+    return localAuthService.isAuthenticated();
   },
 
   getCurrentUser: () => {
@@ -27,7 +43,7 @@ export const tokenService = {
   },
 };
 
-// Generic API request handler (for future backend integration)
+// Generic API request handler
 async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -42,11 +58,17 @@ async function apiRequest<T>(
         ...(token && { 'Authorization': `Bearer ${token}` }),
         ...options.headers,
       },
+      credentials: 'include', // Include cookies
       ...options,
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      let error: any;
+      try {
+        error = await response.json();
+      } catch (e) {
+        error = { error: response.statusText };
+      }
       
       if (response.status === 401) {
         tokenService.clearToken();
@@ -69,42 +91,116 @@ export const authService = {
       throw new Error('Passwords do not match');
     }
 
-    const response = await localAuthService.signup(email, password, name, phoneNumber, dateOfBirth);
-    return response;
+    try {
+      // Try backend first
+      const response = await apiRequest('/api/users/signup', {
+        method: 'POST',
+        body: JSON.stringify({
+          email,
+          password,
+          confirmPassword,
+          name,
+          phoneNumber,
+          dateOfBirth
+        })
+      }) as any;
+
+      // Store token if returned
+      if (response.token) {
+        tokenService.setToken(response.token);
+      }
+
+      return response;
+    } catch (error) {
+      console.warn('Backend signup failed, falling back to localStorage:', error);
+      // Fall back to localStorage
+      return await localAuthService.signup(email, password, name, phoneNumber, dateOfBirth);
+    }
   },
 
   login: async (email: string, password: string) => {
-    return await localAuthService.login(email, password);
+    try {
+      // Try backend first
+      const response = await apiRequest('/api/users/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      }) as any;
+
+      // Store token if returned
+      if (response.token) {
+        tokenService.setToken(response.token);
+      }
+
+      return response;
+    } catch (error) {
+      console.warn('Backend login failed, falling back to localStorage:', error);
+      // Fall back to localStorage
+      return await localAuthService.login(email, password);
+    }
   },
 
   logout: () => {
-    localAuthService.logout();
+    try {
+      // Try backend logout
+      apiRequest('/api/users/logout', { method: 'POST' }).catch(e => 
+        console.warn('Backend logout failed:', e)
+      );
+    } catch (e) {
+      console.warn('Backend logout error:', e);
+    }
+    
+    // Always clear local state
+    tokenService.clearToken();
     return Promise.resolve();
   },
 
   getProfile: async () => {
-    const user = localAuthService.getCurrentUser();
-    if (!user) throw new Error('No user logged in');
-    return { user };
+    try {
+      return await apiRequest('/api/users/profile', { method: 'GET' });
+    } catch (error) {
+      console.warn('Backend profile fetch failed, using localStorage:', error);
+      const user = localAuthService.getCurrentUser();
+      if (!user) throw new Error('No user logged in');
+      return { user };
+    }
   },
 
   updateProfile: async (name: string, phoneNumber: string, dateOfBirth: string) => {
-    const user = localAuthService.getCurrentUser();
-    if (!user) throw new Error('No user logged in');
-    
-    // Update in localStorage
-    const users = JSON.parse(localStorage.getItem('empowernest_users') || '[]');
-    const index = users.findIndex((u: any) => u.email === user.email);
-    if (index !== -1) {
-      users[index] = { ...users[index], name, phone: phoneNumber, dateOfBirth };
-      localStorage.setItem('empowernest_users', JSON.stringify(users));
+    try {
+      return await apiRequest('/api/users/profile', {
+        method: 'PUT',
+        body: JSON.stringify({ name, phoneNumber, dateOfBirth })
+      });
+    } catch (error) {
+      console.warn('Backend profile update failed, using localStorage:', error);
+      const user = localAuthService.getCurrentUser();
+      if (!user) throw new Error('No user logged in');
+      
+      // Update in localStorage
+      const users = JSON.parse(localStorage.getItem('empowernest_users') || '[]');
+      const index = users.findIndex((u: any) => u.email === user.email);
+      if (index !== -1) {
+        users[index] = { ...users[index], name, phone: phoneNumber, dateOfBirth };
+        localStorage.setItem('empowernest_users', JSON.stringify(users));
+      }
+      
+      return { user: { ...user, name, phone: phoneNumber, dateOfBirth } };
     }
-    
-    return { user: { ...user, name, phone: phoneNumber, dateOfBirth } };
   },
 
   changePassword: async (currentPassword: string, newPassword: string, confirmPassword: string) => {
-    throw new Error('Feature not yet implemented');
+    if (newPassword !== confirmPassword) {
+      throw new Error('Passwords do not match');
+    }
+
+    try {
+      return await apiRequest('/api/users/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+    } catch (error) {
+      throw new Error('Failed to change password');
+    }
   },
 };
 
@@ -182,6 +278,34 @@ export const pregnancyService = {
     apiRequest(`/api/pregnancy/${id}`, { method: 'DELETE' }),
 };
 
+// ============= HEALTH RISK ASSESSMENT =============
+export const healthRiskService = {
+  getAllAssessments: () =>
+    apiRequest('/api/health-risk', { method: 'GET' }),
+
+  getLatestAssessment: () =>
+    apiRequest('/api/health-risk/latest', { method: 'GET' }),
+
+  createAssessment: (data: {
+    age: number;
+    weight: number;
+    medicalConditions?: string[];
+  }) =>
+    apiRequest('/api/health-risk', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateAssessment: (id: number, data: any) =>
+    apiRequest(`/api/health-risk/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteAssessment: (id: number) =>
+    apiRequest(`/api/health-risk/${id}`, { method: 'DELETE' }),
+};
+
 // ============= BABY CARE (Placeholder for future) =============
 export const babyCareService = {
   getVaccinations: () =>
@@ -216,6 +340,7 @@ export default {
   authService,
   cycleService,
   pregnancyService,
+  healthRiskService,
   babyCareService,
   tokenService,
 };

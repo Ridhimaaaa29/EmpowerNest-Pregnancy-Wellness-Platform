@@ -97,5 +97,22 @@ CREATE TABLE IF NOT EXISTS daily_logs (
   INDEX (userId, logDate)
 );
 
+-- Health Risk Assessment Table
+CREATE TABLE IF NOT EXISTS health_risk (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  userId INT NOT NULL,
+  age INT,
+  weight DECIMAL(5,2),
+  medicalConditions JSON,
+  riskScore DECIMAL(5,2),
+  riskLevel VARCHAR(50),
+  insights JSON,
+  recommendations JSON,
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX (userId, createdAt)
+);
+
 -- Print completion message
 SELECT '✅ Database tables created successfully!' AS message;

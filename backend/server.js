@@ -36,6 +36,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/cycles', require('./routes/cycleRoutes'));
 app.use('/api/pregnancy', require('./routes/pregnancyRoutes'));
+app.use('/api/health-risk', require('./routes/healthRiskRoutes'));
 
 // 404 Not Found middleware
 app.use((req, res) => {

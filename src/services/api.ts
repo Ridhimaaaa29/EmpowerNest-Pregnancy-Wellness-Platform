@@ -2,10 +2,10 @@
  * API Service Layer
  * Centralized location for all API calls
  * Handles JWT token management and authorization
- * Backend: http://localhost:5000 (Aditya's Express server)
+ * Backend: http://localhost:5001 (Aditya's Express server)
  */
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 // ============= TOKEN MANAGEMENT =============
 const TOKEN_KEY = 'empowerNest_token';

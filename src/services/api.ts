@@ -1,53 +1,33 @@
 /**
  * API Service Layer
- * Centralized location for all API calls
- * Uses JWT tokens sent via Authorization header
- * Backend: Vercel Serverless Functions
+ * Frontend-only for now - uses localStorage for authentication
+ * Can be extended later to use backend APIs
  */
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { localAuthService } from './authLocal';
 
-// Token storage (localStorage for Vercel deployment)
-const TOKEN_KEY = 'auth_token';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 // ============= AUTHENTICATION SERVICE =============
 export const tokenService = {
-  // Get token from localStorage
   getToken: (): string | null => {
-    return localStorage.getItem(TOKEN_KEY);
+    return localAuthService.getToken();
   },
 
-  // Save token to localStorage
-  setToken: (token: string): void => {
-    localStorage.setItem(TOKEN_KEY, token);
-  },
-
-  // Clear token
   clearToken: (): void => {
-    localStorage.removeItem(TOKEN_KEY);
+    localAuthService.logout();
   },
   
-  isAuthenticated: async (): Promise<boolean> => {
-    try {
-      const token = localStorage.getItem(TOKEN_KEY);
-      if (!token) return false;
+  isAuthenticated: (): Promise<boolean> => {
+    return Promise.resolve(localAuthService.isAuthenticated());
+  },
 
-      // Try to fetch profile - if it succeeds, user is authenticated
-      const response = await fetch(`${API_URL}/api/users/profile`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      return response.ok;
-    } catch {
-      return false;
-    }
+  getCurrentUser: () => {
+    return localAuthService.getCurrentUser();
   },
 };
 
-// Generic API request handler with JWT support
+// Generic API request handler (for future backend integration)
 async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -68,10 +48,8 @@ async function apiRequest<T>(
     if (!response.ok) {
       const error = await response.json();
       
-      // Handle 401 - session expired
       if (response.status === 401) {
         tokenService.clearToken();
-        // Redirect to login will be handled by ProtectedRoute
       }
       
       throw new Error(error.message || error.error || `API error: ${response.statusText}`);
@@ -87,52 +65,47 @@ async function apiRequest<T>(
 // ============= USER AUTHENTICATION =============
 export const authService = {
   signup: async (email: string, password: string, confirmPassword: string, name: string, phoneNumber: string, dateOfBirth: string) => {
-    const response = await apiRequest<any>('/api/users/signup', {
-      method: 'POST',
-      body: JSON.stringify({ email, password, confirmPassword, name, phoneNumber, dateOfBirth }),
-    });
-    
-    // Save token to localStorage
-    if (response.token) {
-      tokenService.setToken(response.token);
+    if (password !== confirmPassword) {
+      throw new Error('Passwords do not match');
     }
-    
+
+    const response = await localAuthService.signup(email, password, name, phoneNumber, dateOfBirth);
     return response;
   },
 
   login: async (email: string, password: string) => {
-    const response = await apiRequest<any>('/api/users/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    
-    // Save token to localStorage
-    if (response.token) {
-      tokenService.setToken(response.token);
-    }
-    
-    return response;
+    return await localAuthService.login(email, password);
   },
 
   logout: () => {
-    tokenService.clearToken();
+    localAuthService.logout();
     return Promise.resolve();
   },
 
-  getProfile: () =>
-    apiRequest('/api/users/profile', { method: 'GET' }),
+  getProfile: async () => {
+    const user = localAuthService.getCurrentUser();
+    if (!user) throw new Error('No user logged in');
+    return { user };
+  },
 
-  updateProfile: (name: string, phoneNumber: string, dateOfBirth: string) =>
-    apiRequest('/api/users/profile', {
-      method: 'PUT',
-      body: JSON.stringify({ name, phoneNumber, dateOfBirth }),
-    }),
+  updateProfile: async (name: string, phoneNumber: string, dateOfBirth: string) => {
+    const user = localAuthService.getCurrentUser();
+    if (!user) throw new Error('No user logged in');
+    
+    // Update in localStorage
+    const users = JSON.parse(localStorage.getItem('empowernest_users') || '[]');
+    const index = users.findIndex((u: any) => u.email === user.email);
+    if (index !== -1) {
+      users[index] = { ...users[index], name, phone: phoneNumber, dateOfBirth };
+      localStorage.setItem('empowernest_users', JSON.stringify(users));
+    }
+    
+    return { user: { ...user, name, phone: phoneNumber, dateOfBirth } };
+  },
 
-  changePassword: (currentPassword: string, newPassword: string, confirmPassword: string) =>
-    apiRequest('/api/users/change-password', {
-      method: 'POST',
-      body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
-    }),
+  changePassword: async (currentPassword: string, newPassword: string, confirmPassword: string) => {
+    throw new Error('Feature not yet implemented');
+  },
 };
 
 // ============= CYCLE TRACKER =============

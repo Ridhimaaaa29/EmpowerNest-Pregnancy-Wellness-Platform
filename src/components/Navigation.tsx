@@ -70,8 +70,8 @@ export function Navigation() {
   const navigate = useNavigate();
   
   useEffect(() => {
-    const checkAuth = async () => {
-      const authStatus = await tokenService.isAuthenticated();
+    const checkAuth = () => {
+      const authStatus = tokenService.isAuthenticated();
       setIsAuthenticated(authStatus);
     };
     checkAuth();

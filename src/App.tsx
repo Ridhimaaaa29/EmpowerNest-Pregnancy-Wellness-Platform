@@ -1,5 +1,4 @@
 'use client'
-import { useState, useEffect } from 'react';
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -22,24 +21,12 @@ const queryClient = new QueryClient();
 
 /**
  * RootRedirect Component
- * Checks if user is authenticated via backend cookie
+ * Checks if user is authenticated via localStorage
  * If authenticated: shows the home page
  * If not: redirects to login
  */
 function RootRedirect() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      const authStatus = await tokenService.isAuthenticated();
-      setIsAuthenticated(authStatus);
-    };
-    checkAuth();
-  }, []);
-
-  if (isAuthenticated === null) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
-  }
+  const isAuthenticated = tokenService.isAuthenticated();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;

@@ -1,4 +1,5 @@
-const CycleTracker = require('../models/CycleTracker');
+const CycleEntry = require('../models/CycleEntrySequelize');
+const User = require('../models/UserSequelize');
 
 // Create new cycle entry
 const createEntry = async (req, res) => {
@@ -10,12 +11,13 @@ const createEntry = async (req, res) => {
       return res.status(400).json({ error: 'lastPeriodDate is required' });
     }
 
-    const entry = await CycleTracker.create(userId, {
+    const entry = await CycleEntry.create({
+      userId,
       lastPeriodDate,
-      cycleLength,
-      periodLength,
-      regularCycle,
-      symptoms,
+      cycleLength: cycleLength || 28,
+      periodLength: periodLength || 5,
+      regularCycle: regularCycle !== undefined ? regularCycle : true,
+      symptoms: symptoms,
       flow,
       notes
     });
@@ -34,7 +36,7 @@ const createEntry = async (req, res) => {
 const getAllEntries = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const entries = await CycleTracker.getAllByUserId(userId);
+    const entries = await CycleEntry.findAll({ where: { userId } });
 
     res.status(200).json({
       entries: entries,
@@ -50,10 +52,13 @@ const getAllEntries = async (req, res) => {
 const getLatestEntry = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const entry = await CycleTracker.getLatestByUserId(userId);
+    const entry = await CycleEntry.findOne({
+      where: { userId },
+      order: [['createdAt', 'DESC']]
+    });
 
     if (!entry) {
-      return res.status(404).json({ error: 'No cycle entries found' });
+      return res.status(404).json({ message: 'No cycle entries found' });
     }
 
     res.status(200).json({ entry });
@@ -68,16 +73,18 @@ const getEntryById = async (req, res) => {
   try {
     const userId = req.user.userId;
     const { id } = req.params;
-
-    const entry = await CycleTracker.getById(id, userId);
+    
+    const entry = await CycleEntry.findOne({
+      where: { id, userId }
+    });
 
     if (!entry) {
-      return res.status(404).json({ error: 'Entry not found' });
+      return res.status(404).json({ error: 'Cycle entry not found' });
     }
 
     res.status(200).json({ entry });
   } catch (error) {
-    console.error('Get entry by ID error:', error);
+    console.error('Get entry error:', error);
     res.status(500).json({ error: error.message || 'Failed to fetch entry' });
   }
 };
@@ -87,13 +94,29 @@ const updateEntry = async (req, res) => {
   try {
     const userId = req.user.userId;
     const { id } = req.params;
-    const updates = req.body;
+    const { lastPeriodDate, cycleLength, periodLength, regularCycle, symptoms, flow, notes } = req.body;
 
-    const updatedEntry = await CycleTracker.update(id, userId, updates);
+    const entry = await CycleEntry.findOne({
+      where: { id, userId }
+    });
+
+    if (!entry) {
+      return res.status(404).json({ error: 'Cycle entry not found' });
+    }
+
+    await entry.update({
+      lastPeriodDate: lastPeriodDate || entry.lastPeriodDate,
+      cycleLength: cycleLength || entry.cycleLength,
+      periodLength: periodLength || entry.periodLength,
+      regularCycle: regularCycle !== undefined ? regularCycle : entry.regularCycle,
+      symptoms: symptoms || entry.symptoms,
+      flow: flow || entry.flow,
+      notes: notes || entry.notes
+    });
 
     res.status(200).json({
       message: 'Cycle entry updated successfully',
-      entry: updatedEntry
+      entry
     });
   } catch (error) {
     console.error('Update entry error:', error);
@@ -107,11 +130,15 @@ const deleteEntry = async (req, res) => {
     const userId = req.user.userId;
     const { id } = req.params;
 
-    const deleted = await CycleTracker.delete(id, userId);
+    const entry = await CycleEntry.findOne({
+      where: { id, userId }
+    });
 
-    if (!deleted) {
-      return res.status(404).json({ error: 'Entry not found' });
+    if (!entry) {
+      return res.status(404).json({ error: 'Cycle entry not found' });
     }
+
+    await entry.destroy();
 
     res.status(200).json({ message: 'Cycle entry deleted successfully' });
   } catch (error) {
@@ -120,22 +147,35 @@ const deleteEntry = async (req, res) => {
   }
 };
 
-// Get cycle predictions
+// Get predictions (simple calculation)
 const getPredictions = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const predictions = await CycleTracker.predictNextCycle(userId);
+    const latestEntry = await CycleEntry.findOne({
+      where: { userId },
+      order: [['lastPeriodDate', 'DESC']]
+    });
 
-    if (!predictions) {
-      return res.status(404).json({ 
-        error: 'No cycle data found. Please add your cycle information first.' 
-      });
+    if (!latestEntry) {
+      return res.status(404).json({ message: 'No cycle data available for predictions' });
     }
 
-    res.status(200).json({ predictions });
+    const cycleLength = latestEntry.cycleLength || 28;
+    const periodLength = latestEntry.periodLength || 5;
+    const lastPeriodDate = new Date(latestEntry.lastPeriodDate);
+    
+    const nextPeriodDate = new Date(lastPeriodDate.getTime() + cycleLength * 24 * 60 * 60 * 1000);
+    const ovulationDate = new Date(lastPeriodDate.getTime() + (cycleLength / 2) * 24 * 60 * 60 * 1000);
+
+    res.status(200).json({
+      lastPeriodDate,
+      nextPeriodDate,
+      ovulationDate,
+      cycleLength
+    });
   } catch (error) {
     console.error('Get predictions error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get predictions' });
+    res.status(500).json({ error: error.message || 'Failed to fetch predictions' });
   }
 };
 
@@ -143,18 +183,29 @@ const getPredictions = async (req, res) => {
 const getStatistics = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const statistics = await CycleTracker.getStatistics(userId);
+    const entries = await CycleEntry.findAll({ where: { userId } });
 
-    if (!statistics) {
-      return res.status(404).json({ 
-        error: 'No cycle data found. Please add your cycle information first.' 
-      });
+    if (entries.length === 0) {
+      return res.status(200).json({ message: 'No cycle data available', stats: {} });
     }
 
-    res.status(200).json({ statistics });
+    const cycleLengths = entries
+      .filter(e => e.cycleLength)
+      .map(e => e.cycleLength);
+    
+    const averageCycleLength = cycleLengths.length > 0
+      ? cycleLengths.reduce((a, b) => a + b, 0) / cycleLengths.length
+      : 28;
+
+    res.status(200).json({
+      totalEntries: entries.length,
+      averageCycleLength: Math.round(averageCycleLength),
+      lastEntry: entries[entries.length - 1],
+      entries
+    });
   } catch (error) {
     console.error('Get statistics error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get statistics' });
+    res.status(500).json({ error: error.message || 'Failed to fetch statistics' });
   }
 };
 

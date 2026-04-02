@@ -23,6 +23,23 @@ app.use((req, res, next) => {
   next();
 });
 
+// Root Route
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Welcome to EmpowerNest Backend API',
+    version: '1.0.0',
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      health: '/api/health',
+      users: '/api/users',
+      cycles: '/api/cycles',
+      pregnancy: '/api/pregnancy',
+      healthRisk: '/api/health-risk'
+    }
+  });
+});
+
 // Health Check Route
 app.get('/api/health', (req, res) => {
   res.json({ 

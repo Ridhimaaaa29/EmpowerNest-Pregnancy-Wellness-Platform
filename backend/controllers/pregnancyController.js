@@ -1,4 +1,37 @@
-const PregnancyTracker = require('../models/PregnancyTracker');
+const PregnancyEntry = require('../models/PregnancyEntrySequelize');
+const User = require('../models/UserSequelize');
+
+// Helper function to calculate pregnancy progress from due date
+function calculateProgressFromDueDate(dueDate) {
+  const due = new Date(dueDate);
+  const today = new Date();
+  const timeDiff = due.getTime() - today.getTime();
+  const daysLeft = Math.ceil(timeDiff / (1000 * 3600 * 24));
+  const weekNumber = Math.max(1, Math.min(40, 40 - Math.floor(daysLeft / 7)));
+  const dayNumber = ((daysLeft % 7) + 7) % 7;
+  const currentTrimester = weekNumber <= 13 ? 1 : weekNumber <= 26 ? 2 : 3;
+
+  return { weekNumber, dayNumber, currentTrimester, daysLeft };
+}
+
+// Helper to get milestones for a week
+function getMilestones(weekNumber) {
+  const milestones = {
+    1: "Pregnancy confirmed. Embryo is the size of a grain of rice.",
+    4: "Heart begins to beat. Embryo is now about 1/4 inch long.",
+    8: "All major organs have started forming. Baby is about 1 inch long.",
+    12: "First trimester ends. Baby's features are forming.",
+    16: "Baby can hear. Weighs about 3.5 ounces.",
+    20: "Half way there! Baby should be moving noticeably.",
+    24: "Third trimester begins. Baby's eyes are forming.",
+    28: "Baby weighs nearly 2 pounds.",
+    32: "Most organs are mature. Baby weighs about 4 pounds.",
+    36: "Baby is getting into position for birth.",
+    40: "Full term. Baby is ready to be born!"
+  };
+
+  return milestones[weekNumber] || `Week ${weekNumber} of pregnancy`;
+}
 
 // Create new pregnancy entry
 const createEntry = async (req, res) => {
@@ -10,19 +43,19 @@ const createEntry = async (req, res) => {
       return res.status(400).json({ error: 'dueDate is required' });
     }
 
-    // Calculate trimester and week from due date if not provided
     let calcTrimester = currentTrimester;
     let calcWeek = weekNumber;
     let calcDay = dayNumber;
 
     if (!calcTrimester || !calcWeek) {
-      const progress = await PregnancyTracker.calculateProgressFromDueDate(dueDate);
+      const progress = calculateProgressFromDueDate(dueDate);
       calcTrimester = progress.currentTrimester;
       calcWeek = progress.weekNumber;
       calcDay = progress.dayNumber;
     }
 
-    const entry = await PregnancyTracker.create(userId, {
+    const entry = await PregnancyEntry.create({
+      userId,
       dueDate,
       currentTrimester: calcTrimester,
       weekNumber: calcWeek,
@@ -46,7 +79,7 @@ const createEntry = async (req, res) => {
 const getAllEntries = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const entries = await PregnancyTracker.getAllByUserId(userId);
+    const entries = await PregnancyEntry.findAll({ where: { userId } });
 
     res.status(200).json({
       entries: entries,
@@ -62,7 +95,10 @@ const getAllEntries = async (req, res) => {
 const getLatestEntry = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const entry = await PregnancyTracker.getLatestByUserId(userId);
+    const entry = await PregnancyEntry.findOne({
+      where: { userId },
+      order: [['createdAt', 'DESC']]
+    });
 
     if (!entry) {
       return res.status(404).json({ error: 'No pregnancy entries found' });
@@ -81,7 +117,9 @@ const getEntryById = async (req, res) => {
     const userId = req.user.userId;
     const { id } = req.params;
 
-    const entry = await PregnancyTracker.getById(id, userId);
+    const entry = await PregnancyEntry.findOne({
+      where: { id, userId }
+    });
 
     if (!entry) {
       return res.status(404).json({ error: 'Entry not found' });
@@ -99,13 +137,29 @@ const updateEntry = async (req, res) => {
   try {
     const userId = req.user.userId;
     const { id } = req.params;
-    const updates = req.body;
+    const { dueDate, currentTrimester, weekNumber, dayNumber, weight, bloodPressure, notes } = req.body;
 
-    const updatedEntry = await PregnancyTracker.update(id, userId, updates);
+    const entry = await PregnancyEntry.findOne({
+      where: { id, userId }
+    });
+
+    if (!entry) {
+      return res.status(404).json({ error: 'Entry not found' });
+    }
+
+    await entry.update({
+      dueDate: dueDate || entry.dueDate,
+      currentTrimester: currentTrimester !== undefined ? currentTrimester : entry.currentTrimester,
+      weekNumber: weekNumber || entry.weekNumber,
+      dayNumber: dayNumber !== undefined ? dayNumber : entry.dayNumber,
+      weight: weight || entry.weight,
+      bloodPressure: bloodPressure || entry.bloodPressure,
+      notes: notes || entry.notes
+    });
 
     res.status(200).json({
       message: 'Pregnancy entry updated successfully',
-      entry: updatedEntry
+      entry
     });
   } catch (error) {
     console.error('Update entry error:', error);
@@ -119,11 +173,15 @@ const deleteEntry = async (req, res) => {
     const userId = req.user.userId;
     const { id } = req.params;
 
-    const deleted = await PregnancyTracker.delete(id, userId);
+    const entry = await PregnancyEntry.findOne({
+      where: { id, userId }
+    });
 
-    if (!deleted) {
+    if (!entry) {
       return res.status(404).json({ error: 'Entry not found' });
     }
+
+    await entry.destroy();
 
     res.status(200).json({ message: 'Pregnancy entry deleted successfully' });
   } catch (error) {
@@ -136,7 +194,10 @@ const deleteEntry = async (req, res) => {
 const getProgress = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const latest = await PregnancyTracker.getLatestByUserId(userId);
+    const latest = await PregnancyEntry.findOne({
+      where: { userId },
+      order: [['createdAt', 'DESC']]
+    });
 
     if (!latest) {
       return res.status(404).json({ 
@@ -144,8 +205,8 @@ const getProgress = async (req, res) => {
       });
     }
 
-    const progress = await PregnancyTracker.calculateProgressFromDueDate(latest.dueDate);
-    const milestone = await PregnancyTracker.getMilestones(progress.weekNumber);
+    const progress = calculateProgressFromDueDate(latest.dueDate);
+    const milestone = getMilestones(progress.weekNumber);
 
     res.status(200).json({
       progress,
@@ -161,13 +222,25 @@ const getProgress = async (req, res) => {
 const getHealthMetrics = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const metrics = await PregnancyTracker.getHealthMetrics(userId);
+    const entries = await PregnancyEntry.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']]
+    });
 
-    if (!metrics) {
+    if (entries.length === 0) {
       return res.status(404).json({ 
         error: 'No pregnancy data found.' 
       });
     }
+
+    const latest = entries[0];
+    const metrics = {
+      weight: latest.weight,
+      bloodPressure: latest.bloodPressure,
+      lastUpdated: latest.updatedAt,
+      currentWeek: latest.weekNumber,
+      dueDate: latest.dueDate
+    };
 
     res.status(200).json({ metrics });
   } catch (error) {
@@ -186,7 +259,7 @@ const getMilestone = async (req, res) => {
       return res.status(400).json({ error: 'Week must be between 1 and 42' });
     }
 
-    const milestone = await PregnancyTracker.getMilestones(weekNumber);
+    const milestone = getMilestones(weekNumber);
 
     res.status(200).json({
       week: weekNumber,

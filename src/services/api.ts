@@ -6,7 +6,7 @@
 
 import { localAuthService } from './authLocal';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 // ============= TOKEN SERVICE =============
 export const tokenService = {
@@ -219,6 +219,22 @@ export const cycleService = {
     apiRequest('/api/cycles/statistics', { method: 'GET' }),
 
   createEntry: (data: {
+    lastPeriodDate?: string;
+    cycleLength?: number;
+    periodLength?: number;
+    regularCycle?: boolean;
+    flow?: string;
+    symptoms?: string[];
+    notes?: string;
+    cycleLengthDays?: number;
+    cycleStartDate?: string;
+  }) =>
+    apiRequest('/api/cycles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  createCycle: (data: {
     lastPeriodDate?: string;
     cycleLength?: number;
     periodLength?: number;

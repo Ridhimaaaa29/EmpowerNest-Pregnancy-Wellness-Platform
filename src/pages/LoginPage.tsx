@@ -33,9 +33,9 @@ const LoginPage: React.FC = () => {
       
       setSuccess('Login successful! Redirecting...');
       
-      // Redirect to tracker page after 1.5 seconds
+      // Redirect to home page after 1.5 seconds
       setTimeout(() => {
-        navigate('/tracker');
+        navigate('/');
       }, 1500);
       
     } catch (err: any) {
